@@ -1,87 +1,41 @@
-# Define the Azure provider
-provider "azurerm" {
-  features {}
+# Provider configuration
+provider "aws" {
+  region = "us-west-2"
 }
 
-# Create a resource group
-resource "azurerm_resource_group" "rg" {
-  name     = "example-resource-group"
-  location = "eastus"
+# Create a security group for the vulnerability scanner
+resource "aws_security_group" "scanner_sg" {
+  name_prefix = "vuln-scanner-"
 }
 
-# Create a virtual network
-resource "azurerm_virtual_network" "vnet" {
-  name                = "example-vnet"
-  address_space       = ["10.0.0.0/16"]
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+# Configure the Terraform Security Group Scanner to run on a specific EC2 instance
+resource "aws_instance" "scanner_instance" {
+  ami = "ami-0c55b159cbfafe1f0"
+  instance_type = "t2.micro"
+  vpc_security_group_ids = [aws_security_group.scanner_sg.id]
 
-  subnet {
-    name           = "example-subnet"
-    address_prefix = "10.0.5.0/24"
-  }
+  user_data = <<EOF
+              #!/bin/bash
+              git clone https://github.com/tfse
+			  c/tfsec.git
+              cd tfsec
+              make install
+              ./tfsec --scan /path/to/terraform/code
+              EOF
 }
 
-# Create a network security group
-resource "azurerm_network_security_group" "nsg" {
-  name                = "example123-nsg"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+# Add an ingress rule to allow access to the scanner instance
+resource "aws_security_group_rule" "scanner_rule" {
+  type = "ingress"
+  from_port = 22
+  to_port = 22
+  protocol = "tcp"
+  cidr_blocks = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.scanner_sg.id
 }
 
-# Create a network interface
-resource "azurerm_network_interface" "nic" {
-  name                = "example-nic"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-
-  ip_configuration {
-    name                          = "example-ip-config"
-    subnet_id                     = azurerm_virtual_network.vnet.subnet.id
-    private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = null
-  }
-
-  network_security_group_id = azurerm_network_security_group.nsg.id
+# Output the public IP address of the scanner instance
+output "scanner_public_ip" {
+  value = aws_instance.scanner_instance.public_ip
 }
 
-# Create a virtual machine
-resource "azurerm_virtual_machine" "vm" {
-  name                = "example-vm"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-
-  network_interface_ids = [
-    azurerm_network_interface.nic.id,
-  ]
-
-  vm_size = "Standard_DS1_v2"
-
-  storage_image_reference {
-    publisher = "Canonical"
-    offer     = "UbuntuServer"
-    sku       = "16.04-LTS"
-    version   = "latest"
-  }
-
-  storage_os_disk {
-    name              = "example-osdisk"
-    caching           = "ReadWrite"
-    create_option     = "FromImage"
-    managed_disk_type = "Standard_LRS"
-  }
-
-  os_profile {
-    computer_name  = "example-vm"
-    admin_username = "exampleuser"
-  }
-
-  os_profile_linux_config {
-    disable_password_authentication = true
-
-    ssh_keys {
-      path     = "/home/exampleuser/.ssh/authorized_keys"
-      key_data = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDk+H... exampleuser@mycomputer"
-    }
-  }
-}
