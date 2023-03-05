@@ -18,13 +18,13 @@ resource "azurerm_virtual_network" "vnet" {
 
   subnet {
     name           = "example-subnet"
-    address_prefix = "10.0.1.0/24"
+    address_prefix = "10.0.5.0/24"
   }
 }
 
 # Create a network security group
 resource "azurerm_network_security_group" "nsg" {
-  name                = "example-nsg"
+  name                = "example123-nsg"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 }
